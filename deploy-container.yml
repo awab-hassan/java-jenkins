@@ -2,12 +2,13 @@
 # deploy-container.yml
 - name: Deploy Java Application Docker Container
   hosts: app_servers
-  become: no  # Changed to no to avoid sudo requirement
+  become: no
   vars:
     image_repo: "{{ image_repo }}"
     image_name: "{{ image_name }}"
     app_port: "{{ app_port }}"
     container_port: "{{ container_port }}"
+    app_dir: "{{ playbook_dir }}"  # Use the directory where the playbook is located
     
   tasks:
     - name: Stop and remove containers using the same port
@@ -18,7 +19,12 @@
           docker rm $container_id
         done
       ignore_errors: yes
-      
+    
+    - name: Build Docker image
+      command: docker build -t {{ image_repo }}:{{ image_name }} {{ app_dir }}
+      args:
+        chdir: "{{ app_dir }}"
+    
     - name: Run Docker container
       command: >
         docker run -d 
@@ -31,5 +37,6 @@
       debug:
         msg: 
           - "Application deployed successfully"
-          - "Container ID: {{ image_repo | basename }}-{{ image_name }}"
+          - "Image: {{ image_repo }}:{{ image_name }}"
+          - "Container: {{ image_repo | basename }}-{{ image_name }}"
           - "Access URL: http://localhost:{{ app_port }}"
