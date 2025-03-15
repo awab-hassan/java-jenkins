@@ -33,10 +33,4 @@
         --restart always 
         {{ image_repo }}:{{ image_name }}
       
-    - name: Show deployment information
-      debug:
-        msg: 
-          - "Application deployed successfully"
-          - "Image: {{ image_repo }}:{{ image_name }}"
-          - "Container: {{ image_repo | basename }}-{{ image_name }}"
-          - "Access URL: http://localhost:{{ app_port }}"
+ 
