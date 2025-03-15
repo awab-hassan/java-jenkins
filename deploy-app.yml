@@ -1,0 +1,87 @@
+---
+# deploy-app.yml
+- name: Deploy Java Application
+  hosts: app_servers
+  become: yes
+  vars:
+    app_repo: "https://github.com/your-organization/your-app-repo.git"
+    app_branch: "main"
+    app_dir: "/opt/{{ app_name }}"
+    
+  tasks:
+    - name: Install required packages
+      apt:
+        name: 
+          - git
+          - maven
+          - docker.io
+        state: present
+        update_cache: yes
+      
+    - name: Create application directory if it doesn't exist
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+        
+    - name: Clone/Pull the application repository
+      git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_dir }}"
+        version: "{{ app_branch }}"
+        force: yes
+      register: git_status
+      
+    - name: Build the application with Maven
+      command: mvn clean package
+      args:
+        chdir: "{{ app_dir }}"
+      register: maven_result
+      when: git_status.changed
+      
+    - name: Find the generated JAR/WAR file
+      find:
+        paths: "{{ app_dir }}/target"
+        patterns: "*.jar,*.war"
+      register: built_artifact
+      when: maven_result is changed
+      
+    - name: Create Dockerfile if it doesn't exist
+      copy:
+        dest: "{{ app_dir }}/Dockerfile"
+        content: |
+          FROM openjdk:11-jre-slim
+          WORKDIR /app
+          COPY {{ built_artifact.files[0].path | basename }} /app/app.jar
+          EXPOSE {{ docker_port }}
+          CMD ["java", "-jar", "/app/app.jar"]
+        mode: '0644'
+      when: maven_result is changed
+      
+    - name: Build Docker image
+      command: docker build -t {{ docker_image }} .
+      args:
+        chdir: "{{ app_dir }}"
+      when: maven_result is changed
+      
+    - name: Stop existing Docker container
+      command: docker stop {{ app_name }}
+      ignore_errors: yes
+      
+    - name: Remove existing Docker container
+      command: docker rm {{ app_name }}
+      ignore_errors: yes
+      
+    - name: Run Docker container
+      command: >
+        docker run -d 
+        --name {{ app_name }} 
+        -p {{ host_port }}:{{ docker_port }} 
+        --restart always 
+        {{ docker_image }}
+      
+      
+    - name: Deployment status
+      debug:
+        msg: "Application deployed successfully and running on port {{ host_port }}"
+      when: health_check.status is defined and health_check.status == 200
