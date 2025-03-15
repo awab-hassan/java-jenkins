@@ -1,6 +1,6 @@
 # inventory/hosts
 [app_servers]
-app-server-1 ansible_host=192.168.1.10 ansible_user=deploy ansible_ssh_private_key_file=~/.ssh/id_rsa
+localhost ansible_connection=local
 
 [app_servers:vars]
 ansible_python_interpreter=/usr/bin/python3
