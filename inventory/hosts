@@ -1,6 +1,3 @@
 # inventory/hosts
 [app_servers]
-localhost ansible_connection=local ansible_become=yes ansible_become_method=sudo ansible_become_user=root ansible_become_password=YOUR_SUDO_PASSWORD
-
-[app_servers:vars]
-ansible_python_interpreter=/usr/bin/python3
+localhost ansible_connection=local
