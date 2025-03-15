@@ -2,7 +2,7 @@
 # deploy-container.yml
 - name: Deploy Java Application Docker Container
   hosts: app_servers
-  become: yes
+  become: no  # Changed to no to avoid sudo requirement
   vars:
     image_repo: "{{ image_repo }}"
     image_name: "{{ image_name }}"
@@ -10,55 +10,13 @@
     container_port: "{{ container_port }}"
     
   tasks:
-    - name: Ensure Docker is installed
-      apt:
-        name: docker.io
-        state: present
-        update_cache: yes
-      
-    - name: Ensure Docker service is running
-      systemd:
-        name: docker
-        state: started
-        enabled: yes
-        
-    - name: Get list of running containers
-      command: docker ps -q --filter ancestor={{ image_repo }}
-      register: running_containers
-      ignore_errors: yes
-      
-    - name: Stop running containers with the same image repository
-      command: docker stop {{ item }}
-      with_items: "{{ running_containers.stdout_lines }}"
-      when: running_containers.stdout_lines | length > 0
-      ignore_errors: yes
-      
-    - name: Remove stopped containers with the same image repository
-      command: docker rm {{ item }}
-      with_items: "{{ running_containers.stdout_lines }}"
-      when: running_containers.stdout_lines | length > 0
-      ignore_errors: yes
-      
-    - name: Get all container ports mapping to the app port
-      shell: docker ps -a --format "{% raw %}{{.ID}}{% endraw %}" --filter "publish={{ app_port }}"
-      register: port_conflict_containers
-      ignore_errors: yes
-      
-    - name: Stop containers with port conflicts
-      command: docker stop {{ item }}
-      with_items: "{{ port_conflict_containers.stdout_lines }}"
-      when: port_conflict_containers.stdout_lines | length > 0
-      ignore_errors: yes
-      
-    - name: Remove containers with port conflicts
-      command: docker rm {{ item }}
-      with_items: "{{ port_conflict_containers.stdout_lines }}"
-      when: port_conflict_containers.stdout_lines | length > 0
-      ignore_errors: yes
-      
-    - name: Pull Docker image if needed (for remote repositories)
-      command: docker pull {{ image_repo }}:{{ image_name }}
-      when: "'/' in image_repo"
+    - name: Stop and remove containers using the same port
+      shell: |
+        # Find and stop containers using the same port
+        for container_id in $(docker ps -q --filter "publish={{ app_port }}"); do
+          docker stop $container_id
+          docker rm $container_id
+        done
       ignore_errors: yes
       
     - name: Run Docker container
@@ -69,19 +27,9 @@
         --restart always 
         {{ image_repo }}:{{ image_name }}
       
-    - name: Wait for the application to start
-      wait_for:
-        port: "{{ app_port }}"
-        delay: 10
-        timeout: 60
-      
-    - name: Get container ID
-      command: docker ps -q --filter name={{ image_repo | basename }}-{{ image_name }}
-      register: container_id
-      
     - name: Show deployment information
       debug:
         msg: 
           - "Application deployed successfully"
-          - "Container ID: {{ container_id.stdout }}"
+          - "Container ID: {{ image_repo | basename }}-{{ image_name }}"
           - "Access URL: http://localhost:{{ app_port }}"
