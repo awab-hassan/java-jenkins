@@ -37,7 +37,7 @@ pipeline {
                 script {
                     echo "building the docker image..."
                     sh "docker build -t ${IMAGE_REPO}:${IMAGE_NAME} ."
-                    sh "docker run -d -p8080:8080  ${IMAGE_REPO}:${IMAGE_NAME}"
+                    sh "docker run -d -p8090:8080  ${IMAGE_REPO}:${IMAGE_NAME}"
                     
                 }
             }
