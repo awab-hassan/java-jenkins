@@ -1,87 +1,87 @@
 ---
-# deploy-app.yml
-- name: Deploy Java Application
+# deploy-container.yml
+- name: Deploy Java Application Docker Container
   hosts: app_servers
   become: yes
   vars:
-    app_repo: "https://github.com/awab-hassan/java-jenkins.git"
-    app_branch: "main"
-    app_dir: "/opt/{{ app_name }}"
+    image_repo: "{{ image_repo }}"
+    image_name: "{{ image_name }}"
+    app_port: "{{ app_port }}"
+    container_port: "{{ container_port }}"
     
   tasks:
-    - name: Install required packages
+    - name: Ensure Docker is installed
       apt:
-        name: 
-          - git
-          - maven
-          - docker.io
+        name: docker.io
         state: present
         update_cache: yes
       
-    - name: Create application directory if it doesn't exist
-      file:
-        path: "{{ app_dir }}"
-        state: directory
-        mode: '0755'
+    - name: Ensure Docker service is running
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
         
-    - name: Clone/Pull the application repository
-      git:
-        repo: "{{ app_repo }}"
-        dest: "{{ app_dir }}"
-        version: "{{ app_branch }}"
-        force: yes
-      register: git_status
-      
-    - name: Build the application with Maven
-      command: mvn clean package
-      args:
-        chdir: "{{ app_dir }}"
-      register: maven_result
-      when: git_status.changed
-      
-    - name: Find the generated JAR/WAR file
-      find:
-        paths: "{{ app_dir }}/target"
-        patterns: "*.jar,*.war"
-      register: built_artifact
-      when: maven_result is changed
-      
-    - name: Create Dockerfile if it doesn't exist
-      copy:
-        dest: "{{ app_dir }}/Dockerfile"
-        content: |
-          FROM openjdk:11-jre-slim
-          WORKDIR /app
-          COPY {{ built_artifact.files[0].path | basename }} /app/app.jar
-          EXPOSE {{ docker_port }}
-          CMD ["java", "-jar", "/app/app.jar"]
-        mode: '0644'
-      when: maven_result is changed
-      
-    - name: Build Docker image
-      command: docker build -t {{ docker_image }} .
-      args:
-        chdir: "{{ app_dir }}"
-      when: maven_result is changed
-      
-    - name: Stop existing Docker container
-      command: docker stop {{ app_name }}
+    - name: Get list of running containers
+      command: docker ps -q --filter ancestor={{ image_repo }}
+      register: running_containers
       ignore_errors: yes
       
-    - name: Remove existing Docker container
-      command: docker rm {{ app_name }}
+    - name: Stop running containers with the same image repository
+      command: docker stop {{ item }}
+      with_items: "{{ running_containers.stdout_lines }}"
+      when: running_containers.stdout_lines | length > 0
+      ignore_errors: yes
+      
+    - name: Remove stopped containers with the same image repository
+      command: docker rm {{ item }}
+      with_items: "{{ running_containers.stdout_lines }}"
+      when: running_containers.stdout_lines | length > 0
+      ignore_errors: yes
+      
+    - name: Get all container ports mapping to the app port
+      shell: docker ps -a --format "{% raw %}{{.ID}}{% endraw %}" --filter "publish={{ app_port }}"
+      register: port_conflict_containers
+      ignore_errors: yes
+      
+    - name: Stop containers with port conflicts
+      command: docker stop {{ item }}
+      with_items: "{{ port_conflict_containers.stdout_lines }}"
+      when: port_conflict_containers.stdout_lines | length > 0
+      ignore_errors: yes
+      
+    - name: Remove containers with port conflicts
+      command: docker rm {{ item }}
+      with_items: "{{ port_conflict_containers.stdout_lines }}"
+      when: port_conflict_containers.stdout_lines | length > 0
+      ignore_errors: yes
+      
+    - name: Pull Docker image if needed (for remote repositories)
+      command: docker pull {{ image_repo }}:{{ image_name }}
+      when: "'/' in image_repo"
       ignore_errors: yes
       
     - name: Run Docker container
       command: >
         docker run -d 
-        --name {{ app_name }} 
-        -p {{ host_port }}:{{ docker_port }} 
+        --name {{ image_repo | basename }}-{{ image_name }} 
+        -p {{ app_port }}:{{ container_port }} 
         --restart always 
-        {{ docker_image }}
+        {{ image_repo }}:{{ image_name }}
       
+    - name: Wait for the application to start
+      wait_for:
+        port: "{{ app_port }}"
+        delay: 10
+        timeout: 60
       
-    - name: Deployment status
+    - name: Get container ID
+      command: docker ps -q --filter name={{ image_repo | basename }}-{{ image_name }}
+      register: container_id
+      
+    - name: Show deployment information
       debug:
-        msg: "Application deployed successfully and running on port {{ host_port }}"
-      when: health_check.status is defined and health_check.status == 200
+        msg: 
+          - "Application deployed successfully"
+          - "Container ID: {{ container_id.stdout }}"
+          - "Access URL: http://localhost:{{ app_port }}"
