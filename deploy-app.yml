@@ -4,7 +4,7 @@
   hosts: app_servers
   become: yes
   vars:
-    app_repo: "https://github.com/your-organization/your-app-repo.git"
+    app_repo: "https://github.com/awab-hassan/java-jenkins.git"
     app_branch: "main"
     app_dir: "/opt/{{ app_name }}"
     
