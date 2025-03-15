@@ -1,5 +1,4 @@
 #!/usr/bin/env groovy
-
 pipeline {
     agent any
     tools {
@@ -8,6 +7,9 @@ pipeline {
     environment {
         ECR_REPO_URL = 'java-app'
         IMAGE_REPO = "${ECR_REPO_URL}/java-maven-app"
+        ANSIBLE_INVENTORY = 'inventory/hosts'
+        APP_PORT = '8090'
+        CONTAINER_PORT = '8080'
     }
     stages {
         stage('increment version') {
@@ -32,15 +34,27 @@ pipeline {
                }
             }
         }
-        stage('build image') {
+        stage('deploy with ansible') {
             steps {
                 script {
-                    echo "building the docker image..."
-                    sh "docker build -t ${IMAGE_REPO}:${IMAGE_NAME} ."
-                    sh "docker run -d -p8090:8080  ${IMAGE_REPO}:${IMAGE_NAME}"
-                    
+                    echo "Running Ansible playbook for deployment..."
+                    sh """
+                    ansible-playbook -i ${ANSIBLE_INVENTORY} deploy-container.yml \
+                    --extra-vars "image_repo=${IMAGE_REPO} \
+                    image_name=${IMAGE_NAME} \
+                    app_port=${APP_PORT} \
+                    container_port=${CONTAINER_PORT}"
+                    """
                 }
             }
+        }
+    }
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed!'
         }
     }
 }
