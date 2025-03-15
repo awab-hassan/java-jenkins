@@ -1,52 +1,46 @@
+#!/usr/bin/env groovy
+
 pipeline {
     agent any
-    
+    tools {
+        maven 'Maven'
+    }
     environment {
-        // Define environment variables
-        APP_NAME = 'my-java-app'
-        DOCKER_IMAGE = 'my-java-app:latest'
-        DOCKER_PORT = '8080'
-        HOST_PORT = '8080'
-        ANSIBLE_INVENTORY = 'inventory/hosts'
+        ECR_REPO_URL = 'java-app'
+        IMAGE_REPO = "${ECR_REPO_URL}/java-maven-app"
     }
-    
     stages {
-        stage('Checkout') {
+        stage('increment version') {
             steps {
-                // Checkout the Jenkins pipeline repository
-                checkout scm
+                script {
+                    echo 'incrementing app version...'
+                    sh 'mvn build-helper:parse-version versions:set \
+                        -DnewVersion=\\\${parsedVersion.majorVersion}.\\\${parsedVersion.minorVersion}.\\\${parsedVersion.nextIncrementalVersion} \
+                        versions:commit'
+                    def matcher = readFile('pom.xml') =~ '<version>(.+)</version>'
+                    def version = matcher[0][1]
+                    env.IMAGE_NAME = "$version-$BUILD_NUMBER"
+                    echo "############ ${IMAGE_REPO}"
+                }
             }
         }
-        
-        stage('Run Ansible Deployment') {
+        stage('build app') {
             steps {
-                // Run the Ansible playbook
-                sh '''
-                ansible-playbook -i ${ANSIBLE_INVENTORY} deploy-app.yml \
-                --extra-vars "app_name=${APP_NAME} \
-                docker_image=${DOCKER_IMAGE} \
-                docker_port=${DOCKER_PORT} \
-                host_port=${HOST_PORT}"
-                '''
+               script {
+                   echo "building the application..."
+                   sh 'mvn clean package'
+               }
             }
         }
-        
-        stage('Verify Deployment') {
+        stage('build image') {
             steps {
-                // Simple health check to verify the application is running
-                sh '''
-                ansible -i ${ANSIBLE_INVENTORY} app_servers -m uri -a "url=http://localhost:${HOST_PORT}/health status=200" || true
-                '''
+                script {
+                    echo "building the docker image..."
+                    sh "docker build -t ${IMAGE_REPO}:${IMAGE_NAME} ."
+                    sh "docker run -d -p8080:8080  ${IMAGE_REPO}:${IMAGE_NAME}"
+                    
+                }
             }
-        }
-    }
-    
-    post {
-        success {
-            echo 'Deployment completed successfully!'
-        }
-        failure {
-            echo 'Deployment failed!'
         }
     }
 }
