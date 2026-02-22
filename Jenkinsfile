@@ -6,7 +6,7 @@ pipeline {
     }
     environment {
         ECR_REPO_URL = 'java-app'
-        IMAGE_REPO = "${ECR_REPO_URL}/java-maven-app"
+        IMAGE_REPO = "${ECR_REPO_URL}/java-maven-app-yo"
         ANSIBLE_INVENTORY = 'inventory/hosts'
         APP_PORT = '8090'
         CONTAINER_PORT = '8080'
@@ -58,3 +58,4 @@ pipeline {
         }
     }
 }
+
